@@ -257,7 +257,7 @@ class QRNSS_Newsletter_Builder
                 'id'        => $post->ID,
                 'title'     => get_the_title($post->ID),
                 'thumbnail' => $thumb_url,
-                'excerpt'   => wp_trim_words($post->post_excerpt ? $post->post_excerpt : strip_shortcodes($post->post_content), 20),
+                'excerpt'   => wp_trim_words($post->post_excerpt ? $post->post_excerpt : strip_shortcodes($post->post_content), 100),
                 'link'      => get_permalink($post->ID),
             );
         }
@@ -297,11 +297,12 @@ class QRNSS_Newsletter_Builder
             'list_id'       => isset($raw['list_id'])       ? sanitize_text_field((string) $raw['list_id'])       : '',
             'send_type'     => isset($raw['send_type'])     ? sanitize_key((string) $raw['send_type'])            : 'draft',
             'schedule_date' => isset($raw['schedule_date']) ? sanitize_text_field((string) $raw['schedule_date']) : '',
-            // html_text is the rendered newsletter body. Run it through an email-safe
-            // wp_kses allowlist so any unexpected <script>/<iframe>/<form>/etc. is stripped
-            // while preserving the markup an HTML email actually needs (tables, inline styles,
-            // images, anchors, headings, lists, etc.).
-            'html_text'     => isset($raw['html_text'])     ? self::kses_email_html((string) $raw['html_text'])    : '',
+            // html_text is the rendered newsletter body. Inject full post content for any
+            // <!--QRNSS_FULL_CONTENT_START:ID-->...<!--QRNSS_FULL_CONTENT_END--> markers
+            // emitted by the JS preview, then run the result through an email-safe wp_kses
+            // allowlist so any unexpected <script>/<iframe>/<form>/etc. is stripped while
+            // preserving the markup an HTML email actually needs.
+            'html_text'     => isset($raw['html_text'])     ? self::kses_email_html(self::inject_full_post_content((string) $raw['html_text'])) : '',
         );
 
         // Validate required fields.
@@ -420,6 +421,87 @@ class QRNSS_Newsletter_Builder
     }
 
     /**
+     * Replace <!--QRNSS_FULL_CONTENT_START:ID-->...<!--QRNSS_FULL_CONTENT_END--> markers
+     * (emitted by the JS preview to wrap the hero excerpt + preview-only note) with the
+     * full rendered post content for the given ID. Only published posts the current user
+     * can read are injected; unknown / unpublished IDs leave the marker block untouched
+     * (it will be stripped by wp_kses since HTML comments are not in the allowlist).
+     *
+     * @param string $html Raw email HTML from the JS preview.
+     * @return string HTML with markers replaced.
+     */
+    public static function inject_full_post_content($html)
+    {
+        return preg_replace_callback(
+            '/<!--QRNSS_FULL_CONTENT_START:(\d+)-->.*?<!--QRNSS_FULL_CONTENT_END-->/s',
+            function ($m) {
+                $post_id = (int) $m[1];
+                $post    = get_post($post_id);
+                if (!$post || 'publish' !== $post->post_status) {
+                    return '';
+                }
+                $content = apply_filters('the_content', $post->post_content);
+                return self::inline_alignment_styles($content);
+            },
+            $html
+        );
+    }
+
+    /**
+     * Inline WordPress alignment classes (aligncenter, alignleft, alignright, alignnone)
+     * as `style="..."` attributes on <figure>, <img>, <div>, <p>, <span> tags. Gmail and
+     * other email clients with aggressive CSS resets often override class-based rules from
+     * a <style> block, but inline styles always win the cascade, so this is the most
+     * reliable way to preserve image alignment from the block editor in injected post
+     * content.
+     *
+     * @param string $html Rendered post HTML (post-`the_content` filter).
+     * @return string HTML with alignment styles inlined.
+     */
+    public static function inline_alignment_styles($html)
+    {
+        $rules = array(
+            'aligncenter' => 'display:block; margin-left:auto; margin-right:auto; text-align:center;',
+            'alignleft'   => 'float:left; margin:0 16px 16px 0;',
+            'alignright'  => 'float:right; margin:0 0 16px 16px;',
+            'alignnone'   => 'display:block; margin:16px 0;',
+        );
+
+        foreach ($rules as $class => $css) {
+            $pattern = '/<(figure|img|div|p|span)\b([^>]*\bclass\s*=\s*["\'][^"\']*\b'
+                     . preg_quote($class, '/')
+                     . '\b[^"\']*["\'][^>]*)>/i';
+
+            $html = preg_replace_callback(
+                $pattern,
+                function ($m) use ($css) {
+                    $tag   = $m[1];
+                    $attrs = $m[2];
+
+                    if (preg_match('/\bstyle\s*=\s*(["\'])([^"\']*)\1/i', $attrs)) {
+                        $attrs = preg_replace_callback(
+                            '/\bstyle\s*=\s*(["\'])([^"\']*)\1/i',
+                            function ($sm) use ($css) {
+                                $quote    = $sm[1];
+                                $existing = rtrim($sm[2], '; ');
+                                $merged   = ($existing !== '' ? $existing . '; ' : '') . $css;
+                                return 'style=' . $quote . $merged . $quote;
+                            },
+                            $attrs
+                        );
+                    } else {
+                        $attrs .= ' style="' . $css . '"';
+                    }
+                    return '<' . $tag . $attrs . '>';
+                },
+                $html
+            );
+        }
+
+        return $html;
+    }
+
+    /**
      * Email-safe wp_kses allowlist.
      *
      * Strips <script>, <iframe>, <form>, on* event attributes, javascript: URLs,
@@ -492,6 +574,8 @@ class QRNSS_Newsletter_Builder
             'mark'       => array('style' => true),
             'sup'        => array(),
             'sub'        => array(),
+            'figure'     => $common,
+            'figcaption' => $common,
         );
 
         /**
