@@ -1,5 +1,6 @@
 jQuery(document).ready(function ($) {
     const selectedPosts = [];
+    const postCache = {};
     let bannerUrl = '';
     let layoutType = 'custom';
 
@@ -109,15 +110,19 @@ jQuery(document).ready(function ($) {
     $(document).on('click', '.qrnss-add-post', function (e) {
         e.preventDefault();
         const postId = $(this).data('id');
-        const title = $(this).data('title');
-        const thumbnail = $(this).data('thumbnail');
-        const excerpt = $(this).data('excerpt');
-        const link = $(this).data('link');
-        const content = $(this).data('content');
+        const cached = postCache[postId];
+        if (!cached) return;
 
         if (selectedPosts.some(p => p.id === postId)) return;
 
-        selectedPosts.push({ id: postId, title, thumbnail, excerpt, link, content });
+        selectedPosts.push({
+            id: cached.id,
+            title: cached.title,
+            thumbnail: cached.thumbnail,
+            excerpt: cached.excerpt,
+            content: cached.content,
+            link: cached.link,
+        });
         renderSelectedPosts();
         updatePreview();
 
@@ -273,15 +278,11 @@ jQuery(document).ready(function ($) {
     });
 
     function postItemHtml(post) {
+        postCache[post.id] = post;
         const isSelected = selectedPosts.some(p => p.id === post.id);
         const btnHtml = isSelected
             ? `<button class="button button-link-delete qrnss-remove-post-from-search" data-id="${post.id}">Remove</button>`
-            : `<button class="button button-small qrnss-add-post"
-                                data-id="${post.id}"
-                                data-title="${post.title}"
-                                data-thumbnail="${post.thumbnail}"
-                                data-excerpt="${post.excerpt}"
-                                data-link="${post.link}">Add</button>`;
+            : `<button class="button button-small qrnss-add-post" data-id="${post.id}">Add</button>`;
         return `
             <div class="qrnss-post-item" style="display:flex; align-items:center; margin-bottom:10px; border-bottom:1px solid #eee; padding-bottom:10px;">
                 <img src="${post.thumbnail}" alt="" style="width:50px; height:50px; object-fit:cover; margin-right:10px; border-radius:4px;">
@@ -304,18 +305,14 @@ jQuery(document).ready(function ($) {
             html = '<p>No posts found.</p>';
         } else {
             posts.forEach(post => {
+                postCache[post.id] = post;
                 const isSelected = selectedPosts.some(p => p.id === post.id);
                 let btnHtml = '';
 
                 if (isSelected) {
                     btnHtml = `<button class="button button-link-delete qrnss-remove-post-from-search" data-id="${post.id}">Remove</button>`;
                 } else {
-                    btnHtml = `<button class="button button-small qrnss-add-post"
-                                data-id="${post.id}"
-                                data-title="${post.title}"
-                                data-thumbnail="${post.thumbnail}"
-                                data-excerpt="${post.excerpt}"
-                                data-link="${post.link}">Add</button>`;
+                    btnHtml = `<button class="button button-small qrnss-add-post" data-id="${post.id}">Add</button>`;
                 }
 
                 html += `
@@ -398,10 +395,10 @@ jQuery(document).ready(function ($) {
             html += `
             <div style="padding: 26px 30px;">
                 <div style="background-color: #ffffff; border-radius: 12px; border: 1px solid #e5e7eb; text-align: center;">
-                    ${(currentBanner || heroPost.thumbnail) ? `<a href="${heroPost.link}" style="text-decoration:none;"><img src="${currentBanner || heroPost.thumbnail}" style="width: 100%; height: auto; display: block; border-top-left-radius: 12px; border-top-right-radius: 12px;" /></a>` : ''}
+                    ${(currentBanner || heroPost.thumbnail) ? `<a href="${heroPost.link}" style="text-decoration:none; display:block; text-align:center;"><img src="${currentBanner || heroPost.thumbnail}" style="width: auto; height: auto; max-width: 100%; max-height: 300px; display: block; margin: 0 auto;" /></a>` : ''}
                     <div style="padding: 22px;">
                         <h2 style="margin-top: 0; margin-bottom: ${settings.show_article_excerpt == '1' ? '12px' : '20px'}; color: #0f172a; text-align: center;">${heroPost.title}</h2>
-                        ${settings.show_article_excerpt == '1' && heroPost.excerpt ? `<p style="color: #475569; font-size: 15px; line-height: 1.6; text-align: center; margin-top: 0; margin-bottom: 22px;">${heroPost.excerpt}...</p>` : ''}
+                        ${settings.show_article_excerpt == '1' && (heroPost.content || heroPost.excerpt) ? `<div style="color: #475569; font-size: 15px; line-height: 1.6; margin-top: 0; margin-bottom: 22px;">${heroPost.content || heroPost.excerpt}</div>` : ''}
 
                         <table border="0" cellpadding="0" cellspacing="0" style="margin: auto;">
                             <tr>
