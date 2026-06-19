@@ -1,6 +1,5 @@
 jQuery(document).ready(function ($) {
     const selectedPosts = [];
-    const postCache = {};
     let bannerUrl = '';
     let layoutType = 'custom';
 
@@ -110,19 +109,15 @@ jQuery(document).ready(function ($) {
     $(document).on('click', '.qrnss-add-post', function (e) {
         e.preventDefault();
         const postId = $(this).data('id');
-        const cached = postCache[postId];
-        if (!cached) return;
+        const title = $(this).data('title');
+        const thumbnail = $(this).data('thumbnail');
+        const excerpt = $(this).data('excerpt');
+        const link = $(this).data('link');
+        const content = $(this).data('content');
 
         if (selectedPosts.some(p => p.id === postId)) return;
 
-        selectedPosts.push({
-            id: cached.id,
-            title: cached.title,
-            thumbnail: cached.thumbnail,
-            excerpt: cached.excerpt,
-            content: cached.content,
-            link: cached.link,
-        });
+        selectedPosts.push({ id: postId, title, thumbnail, excerpt, link, content });
         renderSelectedPosts();
         updatePreview();
 
@@ -278,11 +273,15 @@ jQuery(document).ready(function ($) {
     });
 
     function postItemHtml(post) {
-        postCache[post.id] = post;
         const isSelected = selectedPosts.some(p => p.id === post.id);
         const btnHtml = isSelected
             ? `<button class="button button-link-delete qrnss-remove-post-from-search" data-id="${post.id}">Remove</button>`
-            : `<button class="button button-small qrnss-add-post" data-id="${post.id}">Add</button>`;
+            : `<button class="button button-small qrnss-add-post"
+                                data-id="${post.id}"
+                                data-title="${post.title}"
+                                data-thumbnail="${post.thumbnail}"
+                                data-excerpt="${post.excerpt}"
+                                data-link="${post.link}">Add</button>`;
         return `
             <div class="qrnss-post-item" style="display:flex; align-items:center; margin-bottom:10px; border-bottom:1px solid #eee; padding-bottom:10px;">
                 <img src="${post.thumbnail}" alt="" style="width:50px; height:50px; object-fit:cover; margin-right:10px; border-radius:4px;">
@@ -305,14 +304,18 @@ jQuery(document).ready(function ($) {
             html = '<p>No posts found.</p>';
         } else {
             posts.forEach(post => {
-                postCache[post.id] = post;
                 const isSelected = selectedPosts.some(p => p.id === post.id);
                 let btnHtml = '';
 
                 if (isSelected) {
                     btnHtml = `<button class="button button-link-delete qrnss-remove-post-from-search" data-id="${post.id}">Remove</button>`;
                 } else {
-                    btnHtml = `<button class="button button-small qrnss-add-post" data-id="${post.id}">Add</button>`;
+                    btnHtml = `<button class="button button-small qrnss-add-post"
+                                data-id="${post.id}"
+                                data-title="${post.title}"
+                                data-thumbnail="${post.thumbnail}"
+                                data-excerpt="${post.excerpt}"
+                                data-link="${post.link}">Add</button>`;
                 }
 
                 html += `
@@ -357,7 +360,17 @@ jQuery(document).ready(function ($) {
             table, td { border-collapse: collapse; }
             .container { width: 100%; max-width: 680px; margin: auto; background-color: #ffffff; border-radius: 18px; overflow: hidden; box-shadow: 0 10px 34px rgba(0, 0, 0, 0.10); }
             a { text-decoration: underline; color: #2271b1; }
-            
+
+            /* WordPress image alignment (for injected post content) */
+            img { max-width: 100%; height: auto; }
+            figure { margin: 16px 0; text-align: center; }
+            figure img { max-width: 100%; height: auto; }
+            .aligncenter, figure.aligncenter, img.aligncenter { display: block; margin-left: auto; margin-right: auto; text-align: center; }
+            .alignleft, figure.alignleft, img.alignleft { float: left; margin: 0 16px 16px 0; }
+            .alignright, figure.alignright, img.alignright { float: right; margin: 0 0 16px 16px; }
+            .alignnone, figure.alignnone, img.alignnone { display: block; margin: 16px 0; }
+            .wp-caption-text, figcaption { font-size: 13px; color: #64748b; text-align: center; margin: 8px 0 0; }
+
             /* Mobile Responsive */
             @media screen and (max-width: 600px) {
                 .responsive-td {
@@ -398,7 +411,7 @@ jQuery(document).ready(function ($) {
                     ${(currentBanner || heroPost.thumbnail) ? `<a href="${heroPost.link}" style="text-decoration:none; display:block; text-align:center;"><img src="${currentBanner || heroPost.thumbnail}" style="width: auto; height: auto; max-width: 100%; max-height: 300px; display: block; margin: 0 auto;" /></a>` : ''}
                     <div style="padding: 22px;">
                         <h2 style="margin-top: 0; margin-bottom: ${settings.show_article_excerpt == '1' ? '12px' : '20px'}; color: #0f172a; text-align: center;">${heroPost.title}</h2>
-                        ${settings.show_article_excerpt == '1' && (heroPost.content || heroPost.excerpt) ? `<div style="color: #475569; font-size: 15px; line-height: 1.6; margin-top: 0; margin-bottom: 22px;">${heroPost.content || heroPost.excerpt}</div>` : ''}
+                        ${settings.show_article_excerpt == '1' && heroPost.excerpt ? `<!--QRNSS_FULL_CONTENT_START:${heroPost.id}--><p style="color: #475569; font-size: 15px; line-height: 1.6; text-align: center; margin-top: 0; margin-bottom: 8px;">${heroPost.excerpt}...</p><p style="color: #94a3b8; font-size: 12px; font-style: italic; text-align: center; margin-top: 0; margin-bottom: 22px;">For preview only &mdash; the full content will be shown to the recipient.</p><!--QRNSS_FULL_CONTENT_END-->` : ''}
 
                         <table border="0" cellpadding="0" cellspacing="0" style="margin: auto;">
                             <tr>
